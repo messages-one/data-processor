@@ -1,56 +1,6 @@
 #!/bin/bash
 
 # detect_file_format:
-#   Enhanced format detection
-# detect_file_format() {
-#     local file="$1"
-#     local line1=$(head -1 "$file")
-#     local line2=$(head -2 "$file" | tail -1)
-#     local line3=$(head -3 "$file" | tail -1)
-    
-#     # Check for JSON logs first
-#     if echo "$line1" | grep -q "^{" && echo "$line2" | grep -q "^{" && echo "$line3" | grep -q "^{"; then
-#         echo "jsonlog"
-#     # Check for Apache/Nginx access logs
-#     elif echo "$line1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+.*HTTP/[0-9]+\.[0-9]+" [0-9]{3} '; then
-#         echo "weblog"
-#     # Check for syslog format
-#     elif echo "$line1" | grep -qE '^[A-Z][a-z]{2} [ 0-9][0-9] [0-9]{2}:[0-9]{2}:[0-9]{2} '; then
-#         echo "syslog"
-#     # Check for timestamped application logs
-#     elif echo "$line1" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'; then
-#         echo "applog"
-#     # Check for tab-separated (TSV)
-#     elif echo "$line1" | grep -q $'\t' && echo "$line2" | grep -q $'\t'; then
-#         echo "tsv"
-#     # Check for semicolon-separated
-#     elif echo "$line1" | grep -q ";" && echo "$line2" | grep -q ";"; then
-#         echo "semicolon"
-#     # Check for pipe-separated
-#     elif echo "$line1" | grep -q "|" && echo "$line2" | grep -q "|"; then
-#         echo "pipe"
-#     # Check for colon-separated format
-#     elif echo "$line1" | grep -q ":" && echo "$line2" | grep -q ":"; then
-#         echo "colon"
-#     # Check for CSV format
-#     elif echo "$line1" | grep -q "," && echo "$line2" | grep -q ","; then
-#         echo "csv"
-#     # Check for MULTI-space-separated (like kubectl output) - treat as fixed-width
-#     elif echo "$line1" | grep -q "[[:space:]]\{2,\}" && echo "$line2" | grep -q "[[:space:]]\{2,\}"; then
-#         echo "fixed"  # Treat multi-space as fixed-width
-#     # Check for SINGLE-space-separated
-#     elif [ $(echo "$line1" | awk '{print NF}') -gt 1 ] && [ $(echo "$line2" | awk '{print NF}') -gt 1 ]; then
-#         echo "singlespace"
-#     else
-#         echo "fixed"
-#     fi
-# }
-
-
-
-
-
-# detect_file_format:
 #   Enhanced format detection including RFC 5424 syslog
 detect_file_format_orig() {
     local file="$1"
@@ -600,11 +550,6 @@ fill_empty_values_bsdsyslog() {
         print output
     }' "$file"
 }
-
-
-#!/bin/bash
-
-# ... [existing functions remain the same] ...
 
 # Main execution with proper POSIX argument parsing
 filename=""
