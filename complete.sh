@@ -1,6 +1,56 @@
 #!/bin/bash
 
 # detect_file_format:
+#   Enhanced format detection
+# detect_file_format() {
+#     local file="$1"
+#     local line1=$(head -1 "$file")
+#     local line2=$(head -2 "$file" | tail -1)
+#     local line3=$(head -3 "$file" | tail -1)
+    
+#     # Check for JSON logs first
+#     if echo "$line1" | grep -q "^{" && echo "$line2" | grep -q "^{" && echo "$line3" | grep -q "^{"; then
+#         echo "jsonlog"
+#     # Check for Apache/Nginx access logs
+#     elif echo "$line1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+.*HTTP/[0-9]+\.[0-9]+" [0-9]{3} '; then
+#         echo "weblog"
+#     # Check for syslog format
+#     elif echo "$line1" | grep -qE '^[A-Z][a-z]{2} [ 0-9][0-9] [0-9]{2}:[0-9]{2}:[0-9]{2} '; then
+#         echo "syslog"
+#     # Check for timestamped application logs
+#     elif echo "$line1" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'; then
+#         echo "applog"
+#     # Check for tab-separated (TSV)
+#     elif echo "$line1" | grep -q $'\t' && echo "$line2" | grep -q $'\t'; then
+#         echo "tsv"
+#     # Check for semicolon-separated
+#     elif echo "$line1" | grep -q ";" && echo "$line2" | grep -q ";"; then
+#         echo "semicolon"
+#     # Check for pipe-separated
+#     elif echo "$line1" | grep -q "|" && echo "$line2" | grep -q "|"; then
+#         echo "pipe"
+#     # Check for colon-separated format
+#     elif echo "$line1" | grep -q ":" && echo "$line2" | grep -q ":"; then
+#         echo "colon"
+#     # Check for CSV format
+#     elif echo "$line1" | grep -q "," && echo "$line2" | grep -q ","; then
+#         echo "csv"
+#     # Check for MULTI-space-separated (like kubectl output) - treat as fixed-width
+#     elif echo "$line1" | grep -q "[[:space:]]\{2,\}" && echo "$line2" | grep -q "[[:space:]]\{2,\}"; then
+#         echo "fixed"  # Treat multi-space as fixed-width
+#     # Check for SINGLE-space-separated
+#     elif [ $(echo "$line1" | awk '{print NF}') -gt 1 ] && [ $(echo "$line2" | awk '{print NF}') -gt 1 ]; then
+#         echo "singlespace"
+#     else
+#         echo "fixed"
+#     fi
+# }
+
+
+
+
+
+# detect_file_format:
 #   Enhanced format detection including RFC 5424 syslog
 detect_file_format_orig() {
     local file="$1"
@@ -552,17 +602,22 @@ fill_empty_values_bsdsyslog() {
 }
 
 
+#!/bin/bash
+
+# ... [existing functions remain the same] ...
+
 # Main execution with proper POSIX argument parsing
 filename=""
 fill_array=()
 global_fill=""
 has_header="true"
 pretty_print=false
+use_stdin=false
 
 # First, check if any help option is requested
 for arg in "$@"; do
     if [[ "$arg" == "-h" || "$arg" == "--help" ]]; then
-        echo "Usage: $0 [OPTIONS] <filename>"
+        echo "Usage: $0 [OPTIONS] [filename]"
         echo "Options:"
         echo "  -h, --help           Show this help message"
         echo "  -f, --fill <values>   Fill values for empty fields (space-separated)"
@@ -573,7 +628,9 @@ for arg in "$@"; do
         echo "Examples:"
         echo "  $0 -f \"Unknown 0 N/A\" -n -p data.txt"
         echo "  $0 --global MISSING --no-header file.csv"
-        echo "  $0 data.txt -f \"Unknown 0 N/A\" -n -p  # Backward compatible"
+        echo "  $0 data.txt -f \"Unknown 0 N/A\" -n -p"
+        echo "  cat data.txt | $0 -f \"Unknown 0 N/A\"   # Read from stdin"
+        echo "  kubectl get pods | $0 -n -p             # Read from stdin"
         exit 0
     fi
 done
@@ -617,6 +674,9 @@ while [[ $# -gt 0 ]]; do
             done
             break
             ;;
+        -)  # Explicit stdin indicator (for compatibility)
+            use_stdin=true
+            ;;
         -*)  # Handle combined short options and unknown options
             # Extract all characters after the dash
             options="${1:1}"
@@ -625,7 +685,7 @@ while [[ $# -gt 0 ]]; do
                 opt_char="${options:$i:1}"
                 case "$opt_char" in
                     h)
-                        echo "Usage: $0 [OPTIONS] <filename>"
+                        echo "Usage: $0 [OPTIONS] [filename]"
                         echo "Options:"
                         echo "  -h, --help           Show this help message"
                         echo "  -f, --fill <values>   Fill values for empty fields (space-separated)"
@@ -680,13 +740,20 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-# Validate required arguments
+# If no filename provided, use stdin
 if [ -z "$filename" ]; then
-    echo "Error: Filename is required" >&2
-    echo "Usage: $0 [OPTIONS] <filename>"
-    exit 1
+    use_stdin=true
 fi
 
+# Handle stdin (either explicitly with - or implicitly when no filename)
+if [ "$use_stdin" = true ] || [ "$filename" = "-" ]; then
+    # Create a temporary file for stdin content
+    TEMP_FILE=$(mktemp)
+    cat > "$TEMP_FILE"
+    filename="$TEMP_FILE"
+fi
+
+# Check if file exists (unless it's stdin)
 if [ ! -f "$filename" ]; then
     echo "Error: File $filename not found!" >&2
     exit 1
@@ -695,6 +762,12 @@ fi
 if [ ! -r "$filename" ]; then
     echo "Error: File $filename is not readable" >&2
     exit 1
+fi
+
+
+# Clean up temporary file if we used stdin
+if [ "$use_stdin" = true ] || [ "$filename" = "-" ]; then
+    rm -f "$TEMP_FILE"
 fi
 
 file_format=$(detect_file_format "$filename")
