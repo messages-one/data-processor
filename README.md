@@ -44,6 +44,8 @@ The **Data Format Processor** is a powerful Bash-based tool that automates the d
 *   **Header awareness**: Respects or ignores header rows as needed
     
 *   **Format preservation**: Maintains original structure while filling gaps
+
+*   **FPiped Stdin data can be consumed**: you can send data to the script via pipe | stdin
     
 
 ### 🎨 Pretty Printing
@@ -650,6 +652,28 @@ The Data Format Processor supports a comprehensive set of command-line arguments
     # Process INI files (as colon-separated)
     ./complete.sh config.ini -f "default_value" -n
 
+### Piped data Example
+
+🚀 Perfect for Kubernetes Workflows:
+    
+    # 1. Process kubectl output with missing fields
+    kubectl get pods | ./complete-new.sh -f "Unknown Running 0" -n
+
+    # 2. Process API resources with consistent formatting  
+    kubectl api-resources | ./complete-new.sh -f "xxx" | grep -v "xxx"  # Show only resources with shortnames
+
+    # 3. fill incomplete column data with xxx and then pass this cleaned data to awk
+    kubectl api-resources | ./complete.sh -f "xxx" | awk '{print $3 "  " $5}'  # get k8s resource groups and kind columns
+
+    # 3. Create clean reports
+    kubectl get nodes -o wide | ./complete-new.sh -f "Unknown Ready <none>" -n -p
+
+    # 4. Integration with other tools
+    kubectl get services | ./complete-new.sh -f "<none> ClusterIP" -n | awk '{print $1, $3}'
+    The pipe mode is now working perfectly following proper Unix conventions! The script can read from stdin when no filename is provided, making it ideal for pipeline processing and integration with other command-line tools. 🎉
+
+
+
 📋 Argument Precedence Rules
 ----------------------------
 
@@ -677,12 +701,6 @@ The Data Format Processor supports a comprehensive set of command-line arguments
 | Filename | \- | \- | Path | Input file | Required |
 
 This comprehensive argument system provides flexibility for all use cases while maintaining POSIX compliance and intuitive usage!
-
----
-
-
-
-
 
 
 
