@@ -1,5 +1,12 @@
 #!/bin/bash
 
+
+
+
+
+
+
+
 # define colors and end color is the same
 red_color="\e[31m"    # begin color to highlight the ignored files
 end_color="\e[0m"     # end color to end the highlight
@@ -20,6 +27,9 @@ light_purple_color="\e[1;35m"
 brown_color="\e[0;33m"
 light_gray_color="\e[0;37m"
 white_color="\e[1;37m"
+
+# Color control - default to NO color for data processing
+use_color=false
 
 ##
 # Detects the format of a given file by analyzing its first three lines.
@@ -103,36 +113,39 @@ detect_file_format() {
 # @return Outputs the processed file with empty fields filled
 ##
 fill_empty_values_colon() {
-    local file="$1"                           # Store the input file path
-    local num_columns="$2"                    # Store the number of columns
-    local -n fill_array_ref="$3"              # Reference to the array of fill values
-    local global_fill="${4:-}"                # Optional global fill value (default empty)
-    local has_header="${5:-true}"             # Boolean indicating if file has a header (default true)
+    local file="$1"
+    local num_columns="$2"
+    local -n fill_array_ref="$3"
+    local global_fill="${4:-}"
+    local has_header="${5:-true}"
     
-    local fill_array=("${fill_array_ref[@]}") # Copy the fill array from reference
-    local fill_value="${global_fill:-${fill_array[0]}}" # Use global fill or first fill array value
+    local fill_array=("${fill_array_ref[@]}")
+    local fill_value="${global_fill:-${fill_array[0]}}"
     
-    local line_number=0                       # Initialize line counter
-    while IFS= read -r line; do               # Read each line from the file
-        ((line_number++))                     # Increment line counter
+    local line_number=0
+    while IFS= read -r line; do
+        ((line_number++))
         
-        if [ "$has_header" = "true" ] && [ $line_number -eq 1 ]; then  # Check if header exists and this is first line
-            echo "$line"                      # Output header line unchanged
-            continue                          # Skip to next line
+        if [ "$has_header" = "true" ] && [ $line_number -eq 1 ]; then
+            echo -e "${light_red_color}$line${end_color}"
+            continue
         fi
         
-        if [[ "$line" =~ ^[-+=|[:space:]]*$ ]]; then  # Check if line is a separator (e.g., dashes, spaces)
-            echo "$line"                      # Output separator line unchanged
-            continue                          # Skip to next line
+        if [[ "$line" =~ ^[-+=|[:space:]]*$ ]]; then
+            echo -e "${dark_gray_color}$line${end_color}"
+            continue
         fi
         
-        echo "$line" | sed "                  # Process line with sed to fill empty fields
-        s/::/:${fill_value}:/g;              # Replace double colons with fill value
-        s/^:/${fill_value}:/;                # Replace leading colon with fill value
-        s/:$/:${fill_value}/;                # Replace trailing colon with fill value
-        "
-    done < "$file"                           # Read input from file
+        local processed_line=$(echo "$line" | sed "
+        s/::/:${fill_value}:/g;
+        s/^:/${fill_value}:/;
+        s/:$/:${fill_value}/;
+        ")
+        
+        echo "$processed_line"
+    done < "$file"
 }
+
 
 ##
 # Processes CSV files, filling empty fields with specified values.
@@ -145,27 +158,45 @@ fill_empty_values_colon() {
 # @return Outputs the processed CSV file with empty fields filled
 ##
 fill_empty_values_csv() {
-    local file="$1"                           # Store the input file path
-    local num_columns="$2"                    # Store the number of columns
-    local -n fill_array_ref="$3"              # Reference to the array of fill values
-    local global_fill="${4:-}"                # Optional global fill value (default empty)
-    local has_header="${5:-true}"             # Boolean indicating if file has a header (default true)
+    local file="$1"
+    local num_columns="$2"
+    local -n fill_array_ref="$3"
+    local global_fill="${4:-}"
+    local has_header="${5:-true}"
     
-    local fill_array=("${fill_array_ref[@]}") # Copy the fill array from reference
-    local fill_string="${fill_array[*]}"      # Convert fill array to space-separated string
+    local fill_array=("${fill_array_ref[@]}")
+    local fill_string="${fill_array[*]}"
     
-    awk -F, -v global_fill="$global_fill" -v has_header="$has_header" -v fill_str="$fill_string" '  # Run awk with comma as field separator
-    BEGIN { split(fill_str, fill_arr, " ") } # Split fill string into array
+    # Process data first
+    local processed_data=$(awk -F, -v global_fill="$global_fill" -v has_header="$has_header" -v fill_str="$fill_string" '
+    BEGIN { split(fill_str, fill_arr, " ") }
     {
-        if (has_header == "true" && NR == 1) { print; next }  # If header exists, print first line and skip
-        output = ""                          # Initialize output string
-        for (i=1; i<=NF; i++) {              # Loop through each field
-            fill_value = (global_fill != "") ? global_fill : fill_arr[i]  # Use global fill or array value
-            if ($i == "") { output = output (output ? "," : "") fill_value }  # Fill empty field
-            else { output = output (output ? "," : "") $i }  # Keep non-empty field
+        if (has_header == "true" && NR == 1) { 
+            print $0
+            next 
         }
-        print output                         # Print processed line
-    }' "$file"                               # Read input from file
+        output = ""
+        for (i=1; i<=NF; i++) {
+            fill_value = (global_fill != "") ? global_fill : fill_arr[i]
+            if ($i == "") { 
+                output = output (output ? "," : "") fill_value
+            } else { 
+                output = output (output ? "," : "") $i
+            }
+        }
+        print output
+    }' "$file")
+    
+    # Apply colors
+    if [ "$has_header" = "true" ]; then
+        local header_line=$(echo "$processed_data" | head -1)
+        local data_lines=$(echo "$processed_data" | tail -n +2)
+        
+        echo -e "${green_color}${header_line}${end_color}"
+        echo "$data_lines"
+    else
+        echo "$processed_data"
+    fi
 }
 
 ##
@@ -175,31 +206,49 @@ fill_empty_values_csv() {
 # @param num_columns Number of columns in the file
 # @param fill_array_ref Reference to an array of fill values for each column
 # @param global_fill Optional global fill value to use for all empty fields
-# @param has_header Boolean indicating if the file has a header row (default: true)
+# @param has_header Boolean indicating极狐 if the file has a header row (default: true)
 # @return Outputs the processed TSV file with empty fields filled
 ##
 fill_empty_values_tsv() {
-    local file="$1"                           # Store the input file path
-    local num_columns="$2"                    # Store the number of columns
-    local -n fill_array_ref="$3"              # Reference to the array of fill values
-    local global_fill="${4:-}"                # Optional global fill value (default empty)
-    local has_header="${5:-true}"             # Boolean indicating if file has a header (default true)
+    local file="$1"
+    local num_columns="$2"
+    local -n fill_array_ref="$3"
+    local global_fill="${4:-}"
+    local has_header="${5:-true}"
     
-    local fill_array=("${fill_array_ref[@]}") # Copy the fill array from reference
-    local fill_string="${fill_array[*]}"      # Convert fill array to space-separated string
+    local fill_array=("${fill_array_ref[@]}")
+    local fill_string="${fill_array[*]}"
     
-    awk -F$'\t' -v global_fill="$global_fill" -v has_header="$has_header" -v fill_str="$fill_string" '  # Run awk with tab as field separator
-    BEGIN { split(fill_str, fill_arr, " ") } # Split fill string into array
+    # Process data first
+    local processed_data=$(awk -F$'\t' -v global_fill="$global_fill" -v has_header="$has_header" -v fill_str="$fill_string" '
+    BEGIN { split(fill_str, fill_arr, " ") }
     {
-        if (has_header == "true" && NR == 1) { print; next }  # If header exists, print first line and skip
-        output = ""                          # Initialize output string
-        for (i=1; i<=NF; i++) {              # Loop through each field
-            fill_value = (global_fill != "") ? global_fill : fill_arr[i]  # Use global fill or array value
-            if ($i == "") { output = output (output ? "\t" : "") fill_value }  # Fill empty field
-            else { output = output (output ? "\t" : "") $i }  # Keep non-empty field
+        if (has_header == "true" && NR == 1) { 
+            print $0
+            next 
         }
-        print output                         # Print processed line
-    }' "$file"                               # Read input from file
+        output = ""
+        for (i=1; i<=NF; i++) {
+            fill_value = (global_fill != "") ? global_fill : fill_arr[i]
+            if ($i == "") { 
+                output = output (output ? "\t" : "") fill_value
+            } else { 
+                output = output (output ? "\t" : "") $i
+            }
+        }
+        print output
+    }' "$file")
+    
+    # Apply colors
+    if [ "$has_header" = "true" ]; then
+        local header_line=$(echo "$processed_data" | head -1)
+        local data_lines=$(echo "$processed_data" | tail -n +2)
+        
+        echo -e "${light_blue_color}${header_line}${end_color}"
+        echo "$data_lines"
+    else
+        echo "$processed_data"
+    fi
 }
 
 ##
@@ -213,27 +262,45 @@ fill_empty_values_tsv() {
 # @return Outputs the processed semicolon-separated file with empty fields filled
 ##
 fill_empty_values_semicolon() {
-    local file="$1"                           # Store the input file path
-    local num_columns="$2"                    # Store the number of columns
-    local -n fill_array_ref="$3"              # Reference to the array of fill values
-    local global_fill="${4:-}"                # Optional global fill value (default empty)
-    local has_header="${5:-true}"             # Boolean indicating if file has a header (default true)
+    local file="$1"
+    local num_columns="$2"
+    local -n fill_array_ref="$3"
+    local global_fill="${4:-}"
+    local has_header="${5:-true}"
     
-    local fill_array=("${fill_array_ref[@]}") # Copy the fill array from reference
-    local fill_string="${fill_array[*]}"      # Convert fill array to space-separated string
+    local fill_array=("${fill_array_ref[@]}")
+    local fill_string="${fill_array[*]}"
     
-    awk -F';' -v global_fill="$global_fill" -v has_header="$has_header" -v fill_str="$fill_string" '  # Run awk with semicolon as field separator
-    BEGIN { split(fill_str, fill_arr, " ") } # Split fill string into array
+    # Process data first
+    local processed_data=$(awk -F';' -v global_fill="$global_fill" -v has_header="$has_header" -v fill_str="$fill_string" '
+    BEGIN { split(fill_str, fill_arr, " ") }
     {
-        if (has_header == "true" && NR == 1) { print; next }  # If header exists, print first line and skip
-        output = ""                          # Initialize output string
-        for (i=1; i<=NF; i++) {              # Loop through each field
-            fill_value = (global_fill != "") ? global_fill : fill_arr[i]  # Use global fill or array value
-            if ($i == "") { output = output (output ? ";" : "") fill_value }  # Fill empty field
-            else { output = output (output ? ";" : "") $i }  # Keep non-empty field
+        if (has_header == "true" && NR == 1) { 
+            print $0
+            next 
         }
-        print output                         # Print processed line
-    }' "$file"                               # Read input from file
+        output = ""
+        for (i=1; i<=NF; i++) {
+            fill_value = (global_fill != "") ? global_fill : fill_arr[i]
+            if ($i == "") { 
+                output = output (output ? ";" : "") fill_value
+            } else { 
+                output = output (output ? ";" : "") $i
+            }
+        }
+        print output
+    }' "$file")
+    
+    # Apply colors
+    if [ "$has_header" = "true" ]; then
+        local header_line=$(echo "$processed_data" | head -1)
+        local data_lines=$(echo "$processed_data" | tail -n +2)
+        
+        echo -e "${purple_color}${header_line}${end_color}"
+        echo "$data_lines"
+    else
+        echo "$processed_data"
+    fi
 }
 
 ##
@@ -401,28 +468,69 @@ pretty_print_pipe() {
 # @return Outputs the processed single-space-separated file with empty fields filled
 ##
 fill_empty_values_singlespace() {
-    local file="$1"                           # Store the input file path
-    local num_columns="$2"                    # Store the number of columns
-    local -n fill_array_ref="$3"              # Reference to the array of fill values
-    local global_fill="${4:-}"                # Optional global fill value (default empty)
-    local has_header="${5:-true}"             # Boolean indicating if file has a header (default true)
+    local file="$1"
+    local num_columns="$2"
+    local -n fill_array_ref="$3"
+    local global_fill="${4:-}"
+    local has_header="${5:-true}"
     
-    local fill_array=("${fill_array_ref[@]}") # Copy the fill array from reference
-    local fill_string="${fill_array[*]}"      # Convert fill array to space-separated string
+    local fill_array=("${fill_array_ref[@]}")
+    local fill_string="${fill_array[*]}"
     
-    awk -F' ' -v global_fill="$global_fill" -v has_header="$has_header" -v fill_str="$fill_string" '  # Run awk with space as field separator
-    BEGIN { split(fill_str, fill_arr, " ") } # Split fill string into array
+    # Simple and reliable approach
+    local processed_data=$(awk -v global_fill="$global_fill" -v has_header="$has_header" -v fill_str="$fill_string" -v cols="$num_columns" '
+    BEGIN { 
+        split(fill_str, fill_arr, " ")
+    }
     {
-        if (has_header == "true" && NR == 1) { print; next }  # If header exists, print first line and skip
-        output = ""                          # Initialize output string
-        for (i=1; i<=NF; i++) {              # Loop through each field
-            fill_value = (global_fill != "") ? global_fill : fill_arr[i]  # Use global fill or array value
-            if ($i == "") { output = output (output ? " " : "") fill_value }  # Fill empty field
-            else { output = output (output ? " " : "") $i }  # Keep non-empty field
+        if (has_header == "true" && NR == 1) { 
+            print $0
+            next 
         }
-        print output                         # Print processed line
-    }' "$file"                               # Read input from file
+        
+        # Count consecutive spaces to determine empty fields
+        line = $0
+        gsub(/  +/, " @ ", line)  # Replace 2+ spaces with " @ " to mark empty field positions
+        gsub(/^ /, "@ ", line)    # Replace leading space with "@ "
+        gsub(/ $/, " @", line)    # Replace trailing space with " @"
+        
+        # Split and process
+        n = split(line, fields, " ")
+        output = ""
+        
+        for (i=1; i<=n; i++) {
+            if (fields[i] == "@") {
+                fill_value = (global_fill != "") ? global_fill : (i <= length(fill_arr) ? fill_arr[i] : "xxx")
+                output = output (output ? " " : "") fill_value
+            } else {
+                output = output (output ? " " : "") fields[i]
+            }
+        }
+        
+        # Ensure we have the right number of columns
+        current_fields = split(output, temp, " ")
+        if (current_fields < cols) {
+            for (i=current_fields+1; i<=cols; i++) {
+                fill_value = (global_fill != "") ? global_fill : (i <= length(fill_arr) ? fill_arr[i] : "xxx")
+                output = output (output ? " " : "") fill_value
+            }
+        }
+        
+        print output
+    }' "$file")
+    
+    # Apply colors
+    if [ "$has_header" = "true" ]; then
+        local header_line=$(echo "$processed_data" | head -1)
+        local data_lines=$(echo "$processed_data" | tail -n +2)
+        
+        echo -e "${light_green_color}${header_line}${end_color}"
+        echo "$data_lines"
+    else
+        echo "$processed_data"
+    fi
 }
+
 
 ##
 # Processes log files as space-separated, filling empty fields with specified values.
@@ -704,8 +812,12 @@ for arg in "$@"; do                          # Loop through command-line argumen
 done
 
 # Parse command line arguments
-while [[ $# -gt 0 ]]; do                     # Loop while there are arguments
+while [[ $# -gt 0 ]]; do        
+        
     case "$1" in
+        -c|--color)                      # Handle color option
+            use_color=true
+            ;;                 # Loop while there are arguments
         -f|--fill)                           # Handle fill option
             if [ $# -lt 2 ]; then            # Check if argument is provided
                 echo "Error: Missing argument for $1" >&2  # Print error if missing
@@ -808,6 +920,28 @@ while [[ $# -gt 0 ]]; do                     # Loop while there are arguments
     shift                                    # Shift to next argument
 done
 
+# If color is disabled, reset all color variables to empty strings
+if [ "$use_color" = false ]; then
+    red_color=""
+    end_color=""
+    green_color=""
+    blue_color=""
+    yellow_color=""
+    begin_color=""
+    black_color=""
+    dark_gray_color=""
+    light_blue_color=""
+    light_green_color=""
+    cyan_color=""
+    light_cyan_color=""
+    light_red_color=""
+    purple_color=""
+    light_purple_color=""
+    brown_color=""
+    light_gray_color=""
+    white_color=""
+fi
+
 # If no filename provided, use stdin
 if [ -z "$filename" ]; then                  # Check if filename is empty
     use_stdin=true                           # Enable stdin usage
@@ -868,11 +1002,26 @@ case "$file_format" in
             exit 0                           # Exit after pretty printing
         fi
         ;;
+    #"singlespace")                           # Handle single-space-separated format
+    #    col_count=$(head -1 "$filename" | awk '{print NF}')  # Count columns in first line
+    #    while [ ${#fill_array[@]} -lt "$col_count" ]; do fill_array+=("xxx"); done  # Fill array with default values if needed
+    #    echo "Processing as single-space-separated with $col_count columns" >&2  # Print processing message
+    #    processed_data=$(fill_empty_values_singlespace "$filename" "$col_count" fill_array "$global_fill" "$has_header")  # Process single-space-separated file
+    #    ;;
+    # Simpler column count detection for single-space format
+    # In the main script, improve the singlespace column count detection:
     "singlespace")                           # Handle single-space-separated format
-        col_count=$(head -1 "$filename" | awk '{print NF}')  # Count columns in first line
-        while [ ${#fill_array[@]} -lt "$col_count" ]; do fill_array+=("xxx"); done  # Fill array with default values if needed
-        echo "Processing as single-space-separated with $col_count columns" >&2  # Print processing message
-        processed_data=$(fill_empty_values_singlespace "$filename" "$col_count" fill_array "$global_fill" "$has_header")  # Process single-space-separated file
+        # More accurate column count detection that handles the header properly
+        col_count=$(awk '
+        NR == 1 {
+            # Count fields in header, handling quoted values as separate fields
+            gsub(/"[^"]*"/, "X", $0)  # Replace quoted sections with placeholder
+            print NF
+        }' "$filename")
+        
+        while [ ${#fill_array[@]} -lt "$col_count" ]; do fill_array+=("xxx"); done
+        echo "Processing as single-space-separated with $col_count columns" >&2
+        processed_data=$(fill_empty_values_singlespace "$filename" "$col_count" fill_array "$global_fill" "$has_header")
         ;;
     "colon")                                 # Handle colon-separated format
         col_count=$(awk -F: '/^[-+=|[:space:]]*$/ { next } { gsub(/[^:]/, ""); fields = length($0) + 1; if (fields > max) max = fields } END { print (max > 0 ? max : 1) }' "$filename")  # Count max columns
