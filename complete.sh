@@ -5,74 +5,12 @@
 # Supports multiple formats including syslog, pipe-separated, JSON logs, web logs,
 # BSD syslog, application logs, colon-separated, TSV, semicolon-separated, CSV,
 # multi-space-separated, and single-space-separated formats.
-#
-# @param file The path to the file to analyze
-# @return Outputs the detected file format as a string
-##
-detect_file_format_orig() {
-    local file="$1"                           # Store the input file path
-    local line1=$(head -1 "$file")            # Read the first line of the file
-    local line2=$(head -2 "$file" | tail -1)  # Read the second line of the file
-    local line3=$(head -3 "$file" | tail -1)  # Read the third line of the file
-    
-    # Check for RFC 5424 syslog format (even with missing fields)
-    if echo "$line1" | grep -qE '^<[0-9]+>[0-9]' && \    # Check if first line matches RFC 5424 syslog pattern
-       echo "$line2" | grep -qE '^<[0-9]+>[0-9]' && \    # Check if second line matches RFC 5424 syslog pattern
-       echo "$line3" | grep -qE '^<[0-9]+>[0-9]'; then   # Check if third line matches RFC 5424 syslog pattern
-       echo "syslog"                                     # Output 'syslog' if all lines match
-    # Check for pipe-separated format with better pattern matching - FIXED
-    elif echo "$line1" | grep -qE '^([^|]*\|){2,}' && \  # Check if first line has multiple pipe-separated fields
-         echo "$line2" | grep -qE '^([^|]*\|){2,}'; then  # Check if second line has multiple pipe-separated fields
-        echo "pipe"                                      # Output 'pipe' if both lines match
-    # Check for JSON logs
-    elif echo "$line1" | grep -q "^{" && \               # Check if first line starts with JSON object
-         echo "$line2" | grep -q "^{" && \               # Check if second line starts with JSON object
-         echo "$line3" | grep -q "^{"; then              # Check if third line starts with JSON object
-        echo "jsonlog"                                   # Output 'jsonlog' if all lines match
-    # Check for Apache/Nginx access logs
-    elif echo "$line1" | grep -qE '^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+.*HTTP/[0-9]+\.[0-9]+" [0-9]{3} '; then  # Check if first line matches web log pattern
-        echo "weblog"                                    # Output 'weblog' if match found
-    # Check for BSD syslog format (older format)
-    elif echo "$line1" | grep -qE '^[A-Z][a-z]{2} [ 0-9][0-9] [0-9]{2}:[0-9]{2}:[0-9]{2} '; then  # Check if first line matches BSD syslog pattern
-        echo "bsdsyslog"                                 # Output 'bsdsyslog' if match found
-    # Check for timestamped application logs
-    elif echo "$line1" | grep -qE '^[0-9]{4}-[0-9]{2}-[0-9]{2} [0-9]{2}:[0-9]{2}:[0-9]{2}'; then  # Check if first line matches timestamped app log pattern
-        echo "applog"                                    # Output 'applog' if match found
-    # Check for colon-separated format (like /etc/passwd)
-    elif echo "$line1" | grep -qE '^([^:]*:){2,}' && \   # Check if first line has multiple colon-separated fields
-         echo "$line2" | grep -qE '^([^:]*:){2,}'; then   # Check if second line has multiple colon-separated fields
-        echo "colon"                                     # Output 'colon' if both lines match
-    # Check for tab-separated (TSV)
-    elif echo "$line1" | grep -q $'\t' && \              # Check if first line contains tab characters
-         echo "$line2" | grep -q $'\t'; then             # Check if second line contains tab characters
-        echo "tsv"                                       # Output 'tsv' if both lines match
-    # Check for semicolon-separated
-    elif echo "$line1" | grep -q ";" && \                # Check if first line contains semicolons
-         echo "$line2" | grep -q ";"; then               # Check if second line contains semicolons
-        echo "semicolon"                                 # Output 'semicolon' if both lines match
-    # Check for CSV format
-    elif echo "$line1" | grep -q "," && \                # Check if first line contains commas
-         echo "$line2" | grep -q ","; then               # Check if second line contains commas
-        echo "csv"                                       # Output 'csv' if both lines match
-    # Check for MULTI-space-separated (like kubectl output) - treat as fixed-width
-    elif echo "$line1" | grep -q "[[:space:]]\{2,\}" && \  # Check if first line has multiple spaces
-         echo "$line2" | grep -q "[[:space:]]\{2,\}"; then  # Check if second line has multiple spaces
-        echo "fixed"                                      # Output 'fixed' for multi-space separated format
-    # Check for SINGLE-space-separated
-    elif [ $(echo "$line1" | awk '{print NF}') -gt 1 ] && \  # Check if first line has multiple fields (single-space)
-         [ $(echo "$line2" | awk '{print NF}') -gt 1 ]; then  # Check if second line has multiple fields (single-space)
-        echo "singlespace"                                # Output 'singlespace' if both lines match
-    else
-        echo "fixed"                                      # Default to 'fixed' if no other format matches
-    fi
-}
-
-##
 # Enhanced version of file format detection with improved web log pattern matching.
 # Analyzes the first three lines of a file to determine its format.
 #
 # @param file The path to the file to analyze
 # @return Outputs the detected file format as a string
+#
 ##
 detect_file_format() {
     local file="$1"                           # Store the input file path
