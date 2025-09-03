@@ -1,5 +1,26 @@
 #!/bin/bash
 
+# define colors and end color is the same
+red_color="\e[31m"    # begin color to highlight the ignored files
+end_color="\e[0m"     # end color to end the highlight
+green_color="\e[32m"  # the green color
+blue_color="\e[34m"   # blue color
+yellow_color="\e[33m" #yellow color
+begin_color="\e[33m" #yellow color
+
+black_color="\e[0;30m"
+dark_gray_color="\e[1;30m"
+light_blue_color="\e[1;34m"
+light_green_color="\e[1;32m"
+cyan_color_color="\e[0;36m"
+light_cyan_color="\e[1;36m"
+light_red_color="\e[1;31m"
+purple_color="\e[0;35m"
+light_purple_color="\e[1;35m"
+brown_color="\e[0;33m"
+light_gray_color="\e[0;37m"
+white_color="\e[1;37m"
+
 ##
 # Detects the format of a given file by analyzing its first three lines.
 # Supports multiple formats including syslog, pipe-separated, JSON logs, web logs,
@@ -225,7 +246,7 @@ fill_empty_values_semicolon() {
 # @param has_header Boolean indicating if the file has a header row (default: true)
 # @return Outputs the processed pipe-separated file with empty fields filled
 ##
-fill_empty_values_pipe() {
+fill_empty_values_pipe_for_color() {
     local file="$1"                           # Store the input file path
     local num_columns="$2"                    # Store the number of columns
     local -n fill_array_ref="$3"              # Reference to the array of fill values
@@ -249,6 +270,48 @@ fill_empty_values_pipe() {
     }' "$file"                               # Read input from file
 }
 
+
+##
+# Processes pipe-separated files, filling empty fields with specified values.
+#
+# @param file The input file path
+# @param num_columns Number of columns in the file
+# @param fill_array_ref Reference to an array of fill values for each column
+# @param global_fill Optional global fill value to use for all empty fields
+# @param has_header Boolean indicating if the file has a header row (default: true)
+# @return Outputs the processed pipe-separated file with empty fields filled
+##
+fill_empty_values_pipe() {
+    local file="$1"
+    local num_columns="$2"
+    local -n fill_array_ref="$3"
+    local global_fill="${4:-}"
+    local has_header="${5:-true}"
+    
+    local fill_array=("${fill_array_ref[@]}")
+    local fill_string="${fill_array[*]}"
+    
+    awk -F'|' -v global_fill="$global_fill" -v has_header="$has_header" -v fill_str="$fill_string" '
+    BEGIN { split(fill_str, fill_arr, " ") }
+    {
+        if (has_header == "true" && NR == 1) { 
+            print $0
+            next 
+        }
+        output = ""
+        for (i=1; i<=NF; i++) {
+            fill_value = (global_fill != "") ? global_fill : fill_arr[i]
+            if ($i == "" || $i == " ") { 
+                output = output (output ? "|" : "") fill_value
+            } else { 
+                output = output (output ? "|" : "") $i
+            }
+        }
+        print output
+    }' "$file"
+}
+
+
 ##
 # Pretty prints pipe-separated data with aligned columns.
 #
@@ -261,71 +324,68 @@ pretty_print_pipe() {
     local has_header="${2:-true}"             # Boolean indicating if data has a header (default true)
     
     # Read all lines into an array from the input data
-    local -a lines                           # Declare array to store input lines
-    mapfile -t lines <<< "$input_data"       # Read input data into lines array
+    local -a lines
+    while IFS= read -r line; do
+        lines+=("$line")
+    done <<< "$input_data"
     
     # Find maximum width for each column
-    local -a col_widths                      # Declare array to store column widths
-    local line_count=0                       # Initialize line counter
+    local -a col_widths
+    local line_count=0
     
-    for line in "${lines[@]}"; do             # Loop through each line
-        ((line_count++))                     # Increment line counter
-        if [ "$has_header" = "true" ] && [ $line_count -eq 1 ]; then  # Skip header line if present
+    for line in "${lines[@]}"; do
+        ((line_count++))
+        if [ "$has_header" = "true" ] && [ $line_count -eq 1 ]; then
             continue
         fi
         
         # Split line by pipe
-        IFS='|' read -ra fields <<< "$line"   # Split line into fields array
-        for i in "${!fields[@]}"; do          # Loop through each field
-            local field="${fields[$i]}"       # Get current field
-            local field_length=${#field}       # Calculate field length
+        IFS='|' read -ra fields <<< "$line"
+        for i in "${!fields[@]}"; do
+            local field="${fields[$i]}"
+            local field_length=${#field}
             
-            # Initialize or update column width
-            if [ -z "${col_widths[$i]:-}" ] || [ $field_length -gt ${col_widths[$i]} ]; then  # Check if width needs updating
-                col_widths[$i]=$field_length   # Update column width
+            if [ -z "${col_widths[$i]:-}" ] || [ $field_length -gt ${col_widths[$i]} ]; then
+                col_widths[$i]=$field_length
             fi
         done
     done
     
     # Now process each line with proper formatting
-    line_count=0                             # Reset line counter
-    for line in "${lines[@]}"; do             # Loop through each line
-        ((line_count++))                     # Increment line counter
+    line_count=0
+    for line in "${lines[@]}"; do
+        ((line_count++))
         
         # Split line by pipe
-        IFS='|' read -ra fields <<< "$line"   # Split line into fields array
+        IFS='|' read -ra fields <<< "$line"
         
         # Build formatted output
-        local formatted_line=""               # Initialize formatted output string
-        for i in "${!fields[@]}"; do          # Loop through each field
-            local field="${fields[$i]}"       # Get current field
-            local width="${col_widths[$i]:-0}" # Get column width (default 0)
+        local formatted_line=""
+        for i in "${!fields[@]}"; do
+            local field="${fields[$i]}"
+            local width="${col_widths[$i]:-0}"
             
-            # Right-align numbers, left-align everything else
-            if [[ "$field" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then  # Check if field is a number
-                formatted_line+="| $(printf "%${width}s" "$field") "  # Right-align number
+            if [[ "$field" =~ ^-?[0-9]+(\.[0-9]+)?$ ]]; then
+                formatted_line+="| $(printf "%${width}s" "$field") "
             else
-                formatted_line+="| $(printf "%-${width}s" "$field") " # Left-align non-number
+                formatted_line+="| $(printf "%-${width}s" "$field") "
             fi
         done
         
-        # Add trailing pipe if we have columns
-        if [ ${#fields[@]} -gt 0 ]; then      # Check if there are fields
-            formatted_line+="|"               # Add trailing pipe
+        if [ ${#fields[@]} -gt 0 ]; then
+            formatted_line+="|"
         fi
         
-        # Print header separator after header
-        if [ "$has_header" = "true" ] && [ $line_count -eq 1 ]; then  # Check if header exists and this is first line
-            echo "$formatted_line"             # Print formatted header
-            # Print separator line
-            local separator=""                 # Initialize separator string
-            for width in "${col_widths[@]}"; do  # Loop through column widths
-                separator+="+$(printf '%*s' $((width + 2)) | tr ' ' '-')"  # Build separator line
+        if [ "$has_header" = "true" ] && [ $line_count -eq 1 ]; then
+            echo -e "${yellow_color}${formatted_line}${end_color}"
+            local separator=""
+            for width in "${col_widths[@]}"; do
+                separator+="+$(printf '%*s' $((width + 2)) | tr ' ' '-')"
             done
             separator+="+"
-            echo "$separator"                 # Print separator line
+            echo -e "${dark_gray_color}${separator}${end_color}"
         else
-            echo "$formatted_line"            # Print formatted line
+            echo "$formatted_line"
         fi
     done
 }
@@ -398,6 +458,7 @@ fill_empty_values_log() {
     }' "$file"                               # Read input from file
 }
 
+
 ##
 # Processes fixed-width files (e.g., kubectl output), filling empty fields with specified values.
 #
@@ -427,14 +488,16 @@ fill_empty_values_fixed() {
     local fill_string="${fill_array[*]}"      # Convert fill array to space-separated string
     local pos_string="${positions[*]}"        # Convert positions array to space-separated string
     
-    awk -v cols="$num_columns" -v global_fill="$global_fill" -v has_header="$has_header" -v fill_str="$fill_string" -v pos_str="$pos_string" '  # Run awk with variables
+    # Process the file with awk and capture the output
+    local processed_data
+    processed_data=$(awk -v cols="$num_columns" -v global_fill="$global_fill" -v has_header="$has_header" -v fill_str="$fill_string" -v pos_str="$pos_string" '  # Run awk with variables
     BEGIN {
         split(fill_str, fill_arr, " ")        # Split fill string into array
         split(pos_str, pos_arr, " ")          # Split positions string into array
     }
     {
         if (has_header == "true" && NR == 1) {  # If header exists, print first line and skip
-            print
+            print $0
             next
         }
         
@@ -462,8 +525,22 @@ fill_empty_values_fixed() {
             }
         }
         printf "\n"                         # Print newline
-    }' "$file"                              # Read input from file
+    }' "$file")
+    
+    # Now apply colors to the processed data
+    if [ "$has_header" = "true" ]; then
+        # Extract header and colorize it
+        local header_line=$(echo "$processed_data" | head -1)
+        local data_lines=$(echo "$processed_data" | tail -n +2)
+        
+        echo -e "${yellow_color}${header_line}${end_color}"
+        echo "$data_lines"
+    else
+        echo "$processed_data"
+    fi
 }
+
+
 
 ##
 # Processes RFC 5424 syslog files, filling empty fields with specified values.
